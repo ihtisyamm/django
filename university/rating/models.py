@@ -7,7 +7,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 class Module(models.Model):
     code = models.CharField(max_length=10,
                             primary_key=True,
-                            help_text="Module Code (eg COMP1)")
+                            help_text="Module Code (eg CD11)")
     name = models.CharField(max_length=100,
                             help_text="eg, Web services...")
 
