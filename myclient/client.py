@@ -1,7 +1,5 @@
 import requests
-from requests.auth import HTTPBasicAuth
 import getpass
-from django.contrib.auth import authenticate, login
 
 
 class ClientApplication:
