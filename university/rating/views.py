@@ -54,26 +54,26 @@ def rateProfessor(request):
     ratingValue = request.data.get('rating')
 
     if not all([professorID, moduleCode, year, semester, ratingValue]):
-        return Response({"ERROR: Missing some fields"},
+        return Response({"Error: Missing some fields"},
                         status=status.HTTP_400_BAD_REQUEST)
-    
+
     try:
         professor = Professor.objects.get(id=professorID)
         moduel = Module.objects.get(code=moduleCode)
         moduleInstance = ModuleInstance.objects.get(module=moduel,
                                                     year=year,
                                                     semester=semester)
-        
+
         if professor not in moduleInstance.professors.all():
-            return Response({"ERROR: Wrong professor for this module"},
+            return Response({"Error: Wrong professor for this module"},
                             status=status.HTTP_400_BAD_REQUEST)
-        
+
         rating, create = Rating.objects.update_or_create(
             user=request.user,
             moduleInstance=moduleInstance,
             professor=professor,
             defaults={'rating':ratingValue})
-        
+
         serializer = RatingSerializer(rating)
         if create:
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -82,8 +82,8 @@ def rateProfessor(request):
     except (Professor.DoesNotExist,
             Module.DoesNotExist,
             ModuleInstance.DoesNotExist) as e:
-        return Response({f"ERROR: str{e}"},
+        return Response({f"Error {str(e)}"},
                         status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({f"ERROR: str{e}"},
+        return Response({f"Error {str(e)}"},
                         status=status.HTTP_400_BAD_REQUEST)

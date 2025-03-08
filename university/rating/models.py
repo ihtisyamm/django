@@ -17,11 +17,11 @@ class Professor(models.Model):
                           help_text="Professor ID (eg, JE1)")
     name = models.CharField(max_length=100,
                             help_text="Professor's full name, eg John Smith")
-    
-    def getAverageRating(self):
-        ratings = Rating.objects.filter(moduleInstance__professor=self)
 
-        if not ratings:
+    def get_average_rating(self):
+        ratings = Rating.objects.filter(professor=self)
+
+        if not ratings.exists():
             return 0
 
         total = sum(r.rating for r in ratings)
@@ -29,21 +29,22 @@ class Professor(models.Model):
         avg = total / count
 
         return round(avg)
-    
-    def getModuleAverageRating(self, moduleCode):
+
+    def get_module_average_rating(self, moduleCode):
         module = Module.objects.get(code=moduleCode)
 
-        ratings = Rating.objects.filter(moduleInstance__professor=self,
+        ratings = Rating.objects.filter(professor=self,
                                         moduleInstance__module=module)
 
-        if ratings.exists():
-            total = sum(r.rating for r in ratings)
-            count = ratings.count()
-            avg = total / count
+        if not ratings.exists():
+            return 0
 
-            return round(avg)
-        return 0
-    
+        total = sum(r.rating for r in ratings)
+        count = ratings.count()
+        avg = total / count
+
+        return round(avg)
+
 
 class ModuleInstance(models.Model):
     module = models.ForeignKey(Module,
@@ -56,10 +57,10 @@ class ModuleInstance(models.Model):
     professors = models.ManyToManyField(Professor,
                                         related_name='moduleInstance',
                                         help_text="Professor(s) teaching this module")
-    
+
     class Meta:
         unique_together = ('module', 'year', 'semester')
-    
+
     def __str__(self):
         return f"{self.module.code} ({self.year}, Semester {self.semester})"
 
@@ -81,4 +82,4 @@ class Rating(models.Model):
 
 
 
-        
+

@@ -1,234 +1,270 @@
-#!/usr/bin/env python3
-import argparse
 import requests
+from requests.auth import HTTPBasicAuth
 import getpass
-import json
-import sys
+from django.contrib.auth import authenticate, login
 
-class ProfessorRatingClient:
+
+class ClientApplication:
     def __init__(self):
-        self.base_url = None
+        self.baseURL = "https://sc22mibs.pythonanywhere.com/"
         self.session = requests.Session()
-        self.auth_token = None
+        self.isAuthenticated = False
 
     def register(self):
-        """Register a new user"""
-        username = input("Username: ")
-        email = input("Email: ")
-        password = getpass.getpass("Password: ")
-        
-        if not self.base_url:
-            print("Error: You need to login first to set the base URL")
-            return
-            
-        url = f"{self.base_url}/api/register/"
-        data = {
-            "username": username,
-            "email": email,
-            "password": password
-        }
+        username = input("username: ")
+        email = input("email: ")
+        password = getpass.getpass("password: ")
+
+        url = f"{self.baseURL}register/"
+        data = {"username": username,
+                "email": email,
+                "password": password}
         
         try:
             response = requests.post(url, json=data)
             if response.status_code == 201:
-                print("Registration successful! You can now login.")
+                print("Registration successful!")
             else:
-                print(f"Registration failed: {response.text}")
+                print(f"Registration failed with status code {response.status_code}")
         except Exception as e:
-            print(f"Error: {str(e)}")
-
+            print(str(e))
+    
     def login(self, url):
-        """Login to the service"""
-        if not url.startswith(('http://', 'https://')):
-            url = f"http://{url}"
+        if self.isAuthenticated:
+            print("Already logged in. Logout first")
+            return False
+
+        if not url.startswith("https://"):
+            url = f"https://{url}"
+
+        if not url.endswith('/'):
+            url += '/'
         
-        self.base_url = url.rstrip('/')
+        username = input("username: ")
+        password = getpass.getpass("password: ")
+
+        if not username.strip() or not password.strip():
+            print("Username or password cannot be blank")
+            return False
         
-        username = input("Username: ")
-        password = getpass.getpass("Password: ")
+        authURL = f"{url}api-token-auth/"
         
-        auth_url = f"{self.base_url}/api/api-auth/login/"
-        
-        # First, get the CSRF token
         try:
-            response = self.session.get(auth_url)
-            
-            # Then authenticate
-            login_data = {
-                "username": username,
-                "password": password,
-            }
-            
-            response = self.session.post(auth_url, data=login_data)
-            
+            response = requests.post(authURL,
+                                     json={"username": username,
+                                           "password": password})
             if response.status_code == 200:
-                print("Login successful!")
+                token = response.json().get("token")
+                self.session = requests.Session()
+                self.session.headers.update({"Authorization": f"Token {token}"})
+                
+                print(f"Login successful!")
+                self.isAuthenticated = True
+                
+                return True
+            elif response.status_code == 400:
+                print("Wrong password or username")
+                return False
             else:
-                print(f"Login failed: {response.text}")
-                self.base_url = None
+                print(f"Login error with {response.status_code}")
+                return False
         except Exception as e:
-            print(f"Error connecting to {url}: {str(e)}")
-            self.base_url = None
+            print(f"Token auth error {str(e)}")
+            return False
+            
+    
 
     def logout(self):
-        """Logout from the service"""
-        if not self.base_url:
-            print("Error: Not logged in")
+        if not self.isAuthenticated:
+            print("Sorry. Not LOGIN yet. Use 'help'")
             return
-            
-        try:
-            self.session = requests.Session()
-            print("Logged out successfully")
-        except Exception as e:
-            print(f"Error during logout: {str(e)}")
-
-    def list_modules(self):
-        """List all module instances and professors teaching them"""
-        if not self.base_url:
-            print("Error: Not logged in")
-            return
-            
-        url = f"{self.base_url}/api/module-instances/"
         
+        try:
+            print("Successfully logout!")
+            self.session = requests.Session()
+            self.isAuthenticated = False
+        except Exception as e:
+            print(str(e))
+
+    def list(self):
+        
+        url = f"{self.baseURL}/module-instances/"
+
         try:
             response = self.session.get(url)
             if response.status_code == 200:
                 modules = response.json()
-                
+
                 if not modules:
-                    print("No module instances found.")
+                    print("No module instances found")
                     return
                 
-                # Print formatted output
+                
+                print(f"{'Code':<{8}} {'Name':<{46}} {'Year':<{8}} {'Semester':<{10}} {'Taught by'}")
+
                 for module in modules:
-                    code = module['module_code']
-                    name = module['module_name']
-                    year = module['year']
-                    semester = module['semester']
-                    
-                    # Format professors list
-                    professors = ", ".join([f"{p['id']}, Professor {p['name']}" for p in module['professors']])
-                    
-                    print(f"Code\tName\tYear\tSemester\tTaught by")
-                    print(f"{code}\t{name}\t{year}\t{semester}\t{professors}")
+                    code = module.get('moduleCode')
+                    name = module.get('moduleName')
+                    year = module.get('year')
+                    semester = module.get('semester')
+
+                    professorss = []
+                    for p in module.get('professors', []):
+                        professorss.append(f"{p['id']}, Professor {p['name']}")
+                        
+                    professors = ", ".join(professorss)
+
+                    print(f"{code:<{8}} {name:<{46}} {year:<{8}} {semester:<{10}} {professors}")
                     print("-" * 100)
             else:
-                print(f"Error: {response.text}")
+                print(f"Error with status code {response.status_code}")
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(str(e))
 
-    def view_ratings(self):
-        """View ratings of all professors"""
-        if not self.base_url:
-            print("Error: Not logged in")
-            return
-            
-        url = f"{self.base_url}/api/professor-ratings/"
+    def view(self):
         
+        url = f"{self.baseURL}/professor-ratings/"
+
         try:
             response = self.session.get(url)
             if response.status_code == 200:
                 ratings = response.json()
-                
+
                 if not ratings:
-                    print("No professors found.")
+                    print("No professors found")
                     return
                 
                 for prof in ratings:
-                    prof_id = prof['id']
-                    name = prof['name']
-                    rating = prof['average_rating']
-                    stars = "*" * rating
-                    
-                    print(f"The rating of Professor {name} ({prof_id}) is {stars}")
-            else:
-                print(f"Error: {response.text}")
-        except Exception as e:
-            print(f"Error: {str(e)}")
+                    profID = prof.get('id')
+                    name = prof.get('name')
+                    rating = prof.get('average_rating')
+                    if rating is None or rating == 0:
+                        print(f"The rating of Professor {name} ({profID}) is not available")
+                    else:
+                        stars = "*" * int(rating)
+                        print(f"The rating of Professor {name} ({profID}) is {stars}")
 
-    def view_average(self, professor_id, module_code):
-        """View the average rating of a professor in a module"""
-        if not self.base_url:
-            print("Error: Not logged in")
-            return
-            
-        url = f"{self.base_url}/api/professor-module-rating/{professor_id}/{module_code}/"
+            else:
+                print(f"Error status code {response.status_code}")
+        except Exception as e:
+            print(f"Error {str(e)}")
+
+
+    def average(self, professorID, moduleCode):
         
+        url = f"{self.baseURL}/professor-module-rating/{professorID}/{moduleCode}/"
+
         try:
             response = self.session.get(url)
             if response.status_code == 200:
                 data = response.json()
-                name = data['name']
-                rating = data['module_rating']
-                stars = "*" * rating
-                
-                print(f"The rating of Professor {name} ({professor_id}) in module {module_code} is {stars}")
+                name = data.get('name')
+                rating = data.get('module_rating')
+                if rating is None or rating == 0:
+                    print(f"The rating of Professor {name} ({professorID}) in module {moduleCode} is not available")
+                else:
+                    stars = "*" * int(rating)
+                    print(f"The rating of Professor {name} ({professorID}) in module {moduleCode} is {stars}")
             else:
-                print(f"Error: {response.text}")
-        except Exception as e:
-            print(f"Error: {str(e)}")
+                print(f"Error status code {response.status_code}")
 
-    def rate_professor(self, professor_id, module_code, year, semester, rating):
-        """Rate a professor for a module instance"""
-        if not self.base_url:
-            print("Error: Not logged in")
+        except Exception as e:
+            print(f"Error {str(e)}")
+
+    
+     
+    def rate(self, professorID, moduleCode, year, semester, rating):
+        if not self.isAuthenticated:
+            print("Sorry. Not LOGIN yet. Use 'help'")
             return
             
-        url = f"{self.base_url}/api/rate-professor/"
-        
-        data = {
-            "professor_id": professor_id,
-            "module_code": module_code,
-            "year": int(year),
-            "semester": int(semester),
-            "rating": int(rating)
-        }
+        url = f"{self.baseURL}rate-professor/"
         
         try:
+
+            data = {
+                "professorID": professorID,
+                "moduleCode": moduleCode,
+                "year": int(year),
+                "semester": int(semester),
+                "rating": int(rating)
+            }
+        
             response = self.session.post(url, json=data)
             if response.status_code in [200, 201]:
-                print(f"Successfully rated Professor {professor_id} in {module_code} (Year {year}, Semester {semester}) with {rating} stars")
+                print(f"Successfully rated Professor {professorID} in {moduleCode} (Year {year}, Semester {semester}) with {rating} stars")
             else:
-                print(f"Error: {response.text}")
+                print(f"Error status code {response.status_code} {self.session.cookies} {response.text}")
         except Exception as e:
-            print(f"Error: {str(e)}")
+            print(f"Error {str(e)}")         
+   
+    def run(self):
+        print("Professor Rating Client Application")
+        print("Type 'help' for a list of commands or 'exit' to quit")
+        
+        while True:
+            try:
+                commands = input("> ").strip()
+                
+                if not commands:
+                    continue
+                    
+                parts = commands.split()
+                command = parts[0].lower()
+                args = parts[1:]
+                
+                if command == 'exit' or command == 'quit':
+                    print("Goodbye and Thank You!")
+                    break
+                elif command == 'help':
+                    self.help()
+                elif command == 'register':
+                    self.register()
+                elif command == 'login':
+                    if len(args) != 1:
+                        print("Login requires a URL argument!")
+                        print("Usage: login <url>")
+                    else:
+                        self.login(args[0])
+                elif command == 'logout':
+                    self.logout()
+                elif command == 'list':
+                    self.list()
+                elif command == 'view':
+                    self.view()
+                elif command == 'average':
+                    if len(args) != 2:
+                        print("Average requires PROFESSOR ID and MODULE CODE!")
+                        print("Usage: average <professorID> <module_code>")
+                    else:
+                        self.average(args[0], args[1])
+                elif command == 'rate':
+                    if len(args) != 5:
+                        print("Rate requires PROFESSOR ID, MODULE CODE, YEAR, SEMESTER, and RATING!")
+                        print("Usage: rate <professorID> <module_code> <year> <semester> <rating>")
+                    else:
+                        self.rate(args[0], args[1], args[2], args[3], args[4])
+                else:
+                    print(f"Unknown command: {command}")
+                    print("Type 'help' for a list of commands")
+            except KeyboardInterrupt:
+                print("\nGoodbye and Thank You!")
+                break
+    
+    def help(self):
+        """Display help information"""
+        print("Available commands:")
+        print("  register - Register a new user")
+        print("  login <url> - Login to the service")
+        print("  logout - Logout from the service")
+        print("  list - View all module instances and professors")
+        print("  view - View ratings of all professors")
+        print("  average <professorID> <module_code> - View average rating for a professor in a module")
+        print("  rate <professorID> <module_code> <year> <semester> <rating> - Rate a professor")
+        print("  help - Show this help message")
+        print("  exit - Exit the client")
 
-def main():
-    parser = argparse.ArgumentParser(description="Professor Rating Service Client")
-    parser.add_argument('command', choices=['register', 'login', 'logout', 'list', 'view', 'average', 'rate'], 
-                        help='Command to execute')
-    parser.add_argument('args', nargs='*', help='Additional arguments for the command')
-    
-    args = parser.parse_args()
-    
-    client = ProfessorRatingClient()
-    
-    if args.command == 'register':
-        client.register()
-    elif args.command == 'login':
-        if len(args.args) != 1:
-            print("Error: login requires a URL argument")
-            print("Usage: login <url>")
-            sys.exit(1)
-        client.login(args.args[0])
-    elif args.command == 'logout':
-        client.logout()
-    elif args.command == 'list':
-        client.list_modules()
-    elif args.command == 'view':
-        client.view_ratings()
-    elif args.command == 'average':
-        if len(args.args) != 2:
-            print("Error: average requires professor_id and module_code")
-            print("Usage: average <professor_id> <module_code>")
-            sys.exit(1)
-        client.view_average(args.args[0], args.args[1])
-    elif args.command == 'rate':
-        if len(args.args) != 5:
-            print("Error: rate requires professor_id, module_code, year, semester, and rating")
-            print("Usage: rate <professor_id> <module_code> <year> <semester> <rating>")
-            sys.exit(1)
-        client.rate_professor(args.args[0], args.args[1], args.args[2], args.args[3], args.args[4])
 
 if __name__ == "__main__":
-    main()
+    client = ClientApplication()
+    client.run()
